@@ -8,6 +8,15 @@ type ProjectRecord = {
   updatedAt: string
 }
 
+type DocumentRecord = {
+  documentId: number
+  projectId: number
+  documentName: string
+  filePath: string
+  createdAt: string
+  updatedAt: string
+}
+
 function getNextProjectName(projects: ProjectRecord[]) {
   const baseName = 'Untitled Project'
   const names = new Set(projects.map((project) => project.projectName))
@@ -29,11 +38,14 @@ function App() {
   const [projects, setProjects] = useState<ProjectRecord[]>([])
   const [searchQuery, setSearchQuery] = useState('')
   const [isCreating, setIsCreating] = useState(false)
+  const [isAddingDocument, setIsAddingDocument] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState('')
   const [isSavingRename, setIsSavingRename] = useState(false)
   const [projectError, setProjectError] = useState('')
+  const [documentError, setDocumentError] = useState('')
 
   useEffect(() => {
     const loadProjects = async () => {
@@ -49,6 +61,20 @@ function App() {
     if (projects.length === 0) return
     setSelectedProjectId(projects[0].projectId)
   }, [projects, selectedProjectId])
+
+  useEffect(() => {
+    if (selectedProjectId === null) {
+      setDocuments([])
+      return
+    }
+
+    const loadDocuments = async () => {
+      const rows = await window.desktop.listDocuments(selectedProjectId)
+      setDocuments(rows)
+    }
+
+    void loadDocuments()
+  }, [selectedProjectId])
 
   const filteredProjects = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -76,6 +102,33 @@ function App() {
       setProjectError('')
     } finally {
       setIsCreating(false)
+    }
+  }
+
+  const handleAddDocument = async () => {
+    if (selectedProjectId === null || isAddingDocument) return
+
+    setIsAddingDocument(true)
+    try {
+      const createdDocument = await window.desktop.addDocumentFromDialog(selectedProjectId)
+      if (!createdDocument) return
+
+      setDocuments((current) => [createdDocument, ...current])
+      setDocumentError('')
+      await window.desktop.openDocumentReader(createdDocument.documentId)
+    } catch {
+      setDocumentError('Could not add document. Please try again.')
+    } finally {
+      setIsAddingDocument(false)
+    }
+  }
+
+  const handleOpenDocument = async (documentId: number) => {
+    try {
+      await window.desktop.openDocumentReader(documentId)
+      setDocumentError('')
+    } catch {
+      setDocumentError('Could not open document reader.')
     }
   }
 
@@ -190,6 +243,7 @@ function App() {
                       onClick={() => {
                         setSelectedProjectId(project.projectId)
                         setProjectError('')
+                        setDocumentError('')
                       }}
                       onDoubleClick={() => startRenamingProject(project)}
                     >
@@ -234,7 +288,13 @@ function App() {
               </div>
               <div className="documents-head">
                 <div className="tag documents-tag">Documents</div>
-                <button type="button" className="documents-add-btn" aria-label="Add document">
+                <button
+                  type="button"
+                  className="documents-add-btn"
+                  aria-label="Add document"
+                  onClick={() => void handleAddDocument()}
+                  disabled={isAddingDocument}
+                >
                   +
                 </button>
               </div>
@@ -261,7 +321,27 @@ function App() {
               </div>
 
               <article className="panel documents-panel">
-                <h2>The list of documents</h2>
+                <div className="documents-panel-head">
+                  <h2>The list of documents</h2>
+                </div>
+                {documentError ? <p className="project-error">{documentError}</p> : null}
+                {documents.length > 0 ? (
+                  <ul className="document-list">
+                    {documents.map((document) => (
+                      <li key={document.documentId}>
+                        <button
+                          type="button"
+                          className="document-item"
+                          onClick={() => void handleOpenDocument(document.documentId)}
+                        >
+                          {document.documentName}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="documents-empty">No documents yet. Click + to add a PDF.</p>
+                )}
               </article>
 
               <div className="right-column">
