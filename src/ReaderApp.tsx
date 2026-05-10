@@ -7,6 +7,7 @@ import type {
 } from 'pdfjs-dist/types/src/display/api'
 import type { PageViewport } from 'pdfjs-dist/types/src/display/display_utils'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
+import 'pdfjs-dist/web/pdf_viewer.css'
 import './reader.css'
 
 GlobalWorkerOptions.workerSrc = workerSrc
@@ -44,24 +45,6 @@ type PageMetrics = {
   height: number
 }
 
-type TextCacheEntry = {
-  strings: string[]
-}
-
-type ReaderPageProps = {
-  pdfDocument: PDFDocumentProxy
-  pageNumber: number
-  scale: number
-  rotation: number
-  searchQuery: string
-  estimatedHeight: number
-  scrollRoot: HTMLElement | null
-  onMatchCount: (pageNumber: number, count: number) => void
-  onTextCached: (pageNumber: number, strings: string[]) => void
-  onVisibleChange: (pageNumber: number, isVisible: boolean) => void
-  onNavigateDest: (dest: string | unknown[] | null) => void
-}
-
 type PdfTextItem = {
   str?: string
   transform?: number[]
@@ -70,11 +53,21 @@ type PdfTextItem = {
   fontName?: string
 }
 
+type ReaderPageProps = {
+  pdfDocument: PDFDocumentProxy
+  pageNumber: number
+  scale: number
+  rotation: number
+  estimatedHeight: number
+  scrollRoot: HTMLElement | null
+  onVisibleChange: (pageNumber: number, isVisible: boolean) => void
+  onNavigateDest: (dest: string | unknown[] | null) => void
+}
+
 function normalizeBytes(rawBytes: Uint8Array | ArrayBuffer): Uint8Array {
   if (rawBytes instanceof Uint8Array) {
     return rawBytes
   }
-
   return new Uint8Array(rawBytes)
 }
 
@@ -83,30 +76,10 @@ function normalizeRotation(value: number): number {
   return (Math.round(normalized / 90) * 90) % 360
 }
 
-function getScaleForMode(
-  mode: 'custom' | 'actual' | 'fit-width' | 'fit-page',
-  customZoom: number,
-  containerSize: { width: number; height: number },
-  basePageSize: PageMetrics | null,
-): number {
-  if (!basePageSize) {
-    return customZoom
-  }
-
+function getScaleForMode(mode: 'custom' | 'actual', customZoom: number): number {
   if (mode === 'actual') {
     return 1
   }
-
-  if (mode === 'fit-width') {
-    return Math.max(0.3, (containerSize.width - 48) / basePageSize.width)
-  }
-
-  if (mode === 'fit-page') {
-    const scaleByWidth = (containerSize.width - 48) / basePageSize.width
-    const scaleByHeight = (containerSize.height - 48) / basePageSize.height
-    return Math.max(0.3, Math.min(scaleByWidth, scaleByHeight))
-  }
-
   return customZoom
 }
 
@@ -134,43 +107,13 @@ function flattenOutline(items: OutlineNode[] | null | undefined): FlatOutlineIte
   return flat
 }
 
-function applySearchHighlights(
-  strings: string[],
-  textDivs: HTMLElement[],
-  query: string,
-): number {
-  const normalizedQuery = query.trim().toLowerCase()
-
-  for (const div of textDivs) {
-    div.classList.remove('pdf-search-hit')
-  }
-
-  if (!normalizedQuery) {
-    return 0
-  }
-
-  let count = 0
-  for (let index = 0; index < strings.length && index < textDivs.length; index += 1) {
-    const value = strings[index]?.toLowerCase() ?? ''
-    if (value.includes(normalizedQuery)) {
-      textDivs[index].classList.add('pdf-search-hit')
-      count += 1
-    }
-  }
-
-  return count
-}
-
 function ReaderPage({
   pdfDocument,
   pageNumber,
   scale,
   rotation,
-  searchQuery,
   estimatedHeight,
   scrollRoot,
-  onMatchCount,
-  onTextCached,
   onVisibleChange,
   onNavigateDest,
 }: ReaderPageProps) {
@@ -181,8 +124,6 @@ function ReaderPage({
   const [renderedHeight, setRenderedHeight] = useState<number | null>(null)
   const [shouldRender, setShouldRender] = useState(pageNumber <= 2)
   const [pageError, setPageError] = useState('')
-  const textLayerInstanceRef = useRef<TextLayer | null>(null)
-  const textStringsRef = useRef<string[]>([])
 
   useEffect(() => {
     if (!pageRef.current) return
@@ -205,17 +146,6 @@ function ReaderPage({
     observer.observe(pageRef.current)
     return () => observer.disconnect()
   }, [onVisibleChange, pageNumber, scrollRoot])
-
-  useEffect(() => {
-    const textLayer = textLayerInstanceRef.current
-    if (!textLayer) {
-      onMatchCount(pageNumber, 0)
-      return
-    }
-
-    const count = applySearchHighlights(textStringsRef.current, textLayer.textDivs, searchQuery)
-    onMatchCount(pageNumber, count)
-  }, [onMatchCount, pageNumber, searchQuery, shouldRender])
 
   useEffect(() => {
     if (!shouldRender || !canvasRef.current || !textLayerRef.current || !annotationLayerRef.current) {
@@ -259,6 +189,7 @@ function ReaderPage({
         textLayerDiv.innerHTML = ''
         textLayerDiv.style.width = `${Math.floor(viewport.width)}px`
         textLayerDiv.style.height = `${Math.floor(viewport.height)}px`
+        textLayerDiv.style.setProperty('--scale-factor', String(viewport.scale))
 
         const textContent = (await page.getTextContent()) as TextContent
         const textLayer = new TextLayer({
@@ -268,17 +199,6 @@ function ReaderPage({
         })
         await textLayer.render()
         if (isCancelled) return
-
-        textLayerInstanceRef.current = textLayer
-        textStringsRef.current = textLayer.textContentItemsStr
-        onTextCached(pageNumber, textLayer.textContentItemsStr)
-
-        const matchCount = applySearchHighlights(
-          textLayer.textContentItemsStr,
-          textLayer.textDivs,
-          searchQuery,
-        )
-        onMatchCount(pageNumber, matchCount)
 
         await renderLinkAnnotations({
           page,
@@ -300,17 +220,13 @@ function ReaderPage({
       if (renderTask) {
         renderTask.cancel()
       }
-      textLayerInstanceRef.current?.cancel()
     }
   }, [
-    onMatchCount,
     onNavigateDest,
-    onTextCached,
     pageNumber,
     pdfDocument,
     rotation,
     scale,
-    searchQuery,
     shouldRender,
   ])
 
@@ -429,23 +345,18 @@ function ReaderApp({ documentId }: ReaderAppProps) {
   const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null)
   const [numPages, setNumPages] = useState(0)
   const [rotation, setRotation] = useState(0)
-  const [zoomMode, setZoomMode] = useState<'custom' | 'actual' | 'fit-width' | 'fit-page'>(
-    'fit-width',
-  )
-  const [customZoom, setCustomZoom] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [matchCountsByPage, setMatchCountsByPage] = useState<Record<number, number>>({})
-  const [visiblePages, setVisiblePages] = useState<Record<number, boolean>>({})
+  const [zoomMode, setZoomMode] = useState<'custom' | 'actual'>('custom')
+  const [customZoom, setCustomZoom] = useState(1.2)
+  const visiblePagesRef = useRef<Record<number, boolean>>({})
+  const [currentPage, setCurrentPage] = useState(1)
   const [pageInput, setPageInput] = useState('1')
   const [isLoading, setIsLoading] = useState(true)
   const [readerError, setReaderError] = useState('')
   const [outlineItems, setOutlineItems] = useState<FlatOutlineItem[]>([])
-  const [showOutline, setShowOutline] = useState(true)
-  const [showThumbs, setShowThumbs] = useState(true)
-  const [containerSize, setContainerSize] = useState({ width: 1200, height: 900 })
+  const [activeTab, setActiveTab] = useState<'thumbs' | 'outline'>('thumbs')
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const [naturalPageSize, setNaturalPageSize] = useState<PageMetrics | null>(null)
   const [extractStatus, setExtractStatus] = useState('')
-  const [textCache, setTextCache] = useState<Record<number, TextCacheEntry>>({})
   const scrollWrapRef = useRef<HTMLDivElement | null>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const thumbnailCanvasRef = useRef<Record<number, HTMLCanvasElement | null>>({})
@@ -508,22 +419,6 @@ function ReaderApp({ documentId }: ReaderAppProps) {
     }
   }, [documentId])
 
-  useEffect(() => {
-    if (!scrollWrapRef.current) return
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      setContainerSize({
-        width: entry.contentRect.width,
-        height: entry.contentRect.height,
-      })
-    })
-
-    observer.observe(scrollWrapRef.current)
-    return () => observer.disconnect()
-  }, [])
-
   const defaultPageMetrics = useMemo(
     () => naturalPageSize ?? { width: 820, height: 1120 },
     [naturalPageSize],
@@ -540,40 +435,17 @@ function ReaderApp({ documentId }: ReaderAppProps) {
   }, [defaultPageMetrics, rotation])
 
   const effectiveScale = useMemo(
-    () => getScaleForMode(zoomMode, customZoom, containerSize, orientedBasePageSize),
-    [containerSize, customZoom, orientedBasePageSize, zoomMode],
+    () => getScaleForMode(zoomMode, customZoom),
+    [customZoom, zoomMode],
   )
 
   const estimatedPageHeight = useMemo(() => {
     return orientedBasePageSize.height * effectiveScale + 24
   }, [effectiveScale, orientedBasePageSize.height])
 
-  const totalMatches = useMemo(
-    () => Object.values(matchCountsByPage).reduce((sum, count) => sum + count, 0),
-    [matchCountsByPage],
-  )
-
-  const currentPage = useMemo(() => {
-    const visible = Object.entries(visiblePages)
-      .filter(([, value]) => value)
-      .map(([page]) => Number(page))
-      .sort((a, b) => a - b)
-    if (visible.length > 0) return visible[0]
-    return 1
-  }, [visiblePages])
-
   useEffect(() => {
     setPageInput(String(currentPage))
   }, [currentPage])
-
-  const matchedPages = useMemo(
-    () =>
-      Object.entries(matchCountsByPage)
-        .filter(([, count]) => count > 0)
-        .map(([page]) => Number(page))
-        .sort((a, b) => a - b),
-    [matchCountsByPage],
-  )
 
   const scrollToPage = (pageNumber: number) => {
     const target = pageRefs.current[pageNumber]
@@ -587,20 +459,6 @@ function ReaderApp({ documentId }: ReaderAppProps) {
     if (!Number.isInteger(pageNumber)) return
     const target = Math.max(1, Math.min(numPages, pageNumber))
     scrollToPage(target)
-  }
-
-  const handleStepSearch = (direction: 1 | -1) => {
-    if (matchedPages.length === 0) return
-
-    if (direction === 1) {
-      const next = matchedPages.find((page) => page > currentPage) ?? matchedPages[0]
-      scrollToPage(next)
-      return
-    }
-
-    const reverse = [...matchedPages].reverse()
-    const prev = reverse.find((page) => page < currentPage) ?? reverse[0]
-    scrollToPage(prev)
   }
 
   const resolveDestinationToPage = async (dest: string | unknown[] | null): Promise<number | null> => {
@@ -723,219 +581,142 @@ function ReaderApp({ documentId }: ReaderAppProps) {
     }
   }, [pdfDocument])
 
-  useEffect(() => {
-    if (!pdfDocument) return
-    if (!searchQuery.trim()) return
-
-    let cancelled = false
-    const timeoutId = window.setTimeout(() => {
-      void (async () => {
-        const normalizedQuery = searchQuery.trim().toLowerCase()
-
-        for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-          if (cancelled) return
-
-          if (!textCache[pageNumber]) {
-            try {
-              const page = await pdfDocument.getPage(pageNumber)
-              const textContent = (await page.getTextContent()) as TextContent
-              const strings = (textContent.items as PdfTextItem[]).map((item) => item.str ?? '')
-              if (!cancelled) {
-                setTextCache((current) => ({
-                  ...current,
-                  [pageNumber]: { strings },
-                }))
-              }
-            } catch {
-              // Ignore indexing failure for this page.
-            }
-          }
-        }
-
-        if (!cancelled) {
-          setMatchCountsByPage((current) => {
-            const next: Record<number, number> = { ...current }
-            for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-              const entry = textCache[pageNumber]
-              if (!entry) continue
-              const count = entry.strings.reduce((sum, text) => {
-                if (!normalizedQuery) return 0
-                return sum + (text.toLowerCase().includes(normalizedQuery) ? 1 : 0)
-              }, 0)
-              next[pageNumber] = count
-            }
-            return next
-          })
-        }
-      })()
-    }, 260)
-
-    return () => {
-      cancelled = true
-      window.clearTimeout(timeoutId)
-    }
-  }, [pdfDocument, searchQuery, textCache])
-
   return (
     <main className="reader-shell reader-shell-advanced">
       <header className="reader-toolbar">
-        <h1 className="reader-title">{documentName}</h1>
+        <div className="toolbar-left">
+          <button type="button" className="reader-icon-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)} aria-label="Toggle sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+          </button>
+          <h1 className="reader-title">{documentName}</h1>
+        </div>
+
         <div className="reader-controls">
-          <input
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder="Search text"
-            className="reader-input search"
-          />
-          <button type="button" className="reader-btn" onClick={() => handleStepSearch(-1)}>
-            Prev
-          </button>
-          <button type="button" className="reader-btn" onClick={() => handleStepSearch(1)}>
-            Next
-          </button>
-          <span className="reader-status">{totalMatches} matches</span>
-          <input
-            value={pageInput}
-            onChange={(event) => setPageInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') handleJumpToInputPage()
-            }}
-            className="reader-input page"
-            aria-label="Jump to page"
-          />
-          <button type="button" className="reader-btn" onClick={handleJumpToInputPage}>
-            Go
-          </button>
-          <button
-            type="button"
-            className="reader-btn"
-            onClick={() => {
-              setZoomMode('custom')
-              setCustomZoom((current) => Math.max(0.3, Number((current - 0.1).toFixed(2))))
-            }}
-          >
-            -
-          </button>
-          <span className="reader-status">{Math.round(effectiveScale * 100)}%</span>
-          <button
-            type="button"
-            className="reader-btn"
-            onClick={() => {
-              setZoomMode('custom')
-              setCustomZoom((current) => Math.min(4, Number((current + 0.1).toFixed(2))))
-            }}
-          >
-            +
-          </button>
-          <button type="button" className="reader-btn" onClick={() => setZoomMode('actual')}>
-            Actual
-          </button>
-          <button type="button" className="reader-btn" onClick={() => setZoomMode('fit-width')}>
-            Fit Width
-          </button>
-          <button type="button" className="reader-btn" onClick={() => setZoomMode('fit-page')}>
-            Fit Page
-          </button>
-          <button
-            type="button"
-            className="reader-btn"
-            onClick={() => setRotation((current) => normalizeRotation(current + 90))}
-          >
-            Rotate
-          </button>
-          <button type="button" className="reader-btn" onClick={handleExportTextContext}>
-            Export Context
-          </button>
+          <div className="control-group search-group" style={{ display: 'none' }}>
+            {/* Search hidden entirely */}
+          </div>
+
+          <div className="control-group nav-group">
+            <span className="reader-status">Page</span>
+            <input
+              value={pageInput}
+              onChange={(event) => setPageInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handleJumpToInputPage()
+              }}
+              className="reader-input page"
+              aria-label="Jump to page"
+            />
+            <span className="reader-status">/ {numPages}</span>
+            <button type="button" className="reader-btn" onClick={handleJumpToInputPage}>Go</button>
+          </div>
+
+          <div className="control-group zoom-group">
+            <button type="button" className="reader-icon-btn" onClick={() => { setZoomMode('custom'); setCustomZoom((current) => Math.max(0.3, Number((current - 0.1).toFixed(2)))) }} aria-label="Zoom out">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <span className="reader-status">{Math.round(effectiveScale * 100)}%</span>
+            <button type="button" className="reader-icon-btn" onClick={() => { setZoomMode('custom'); setCustomZoom((current) => Math.min(4, Number((current + 0.1).toFixed(2)))) }} aria-label="Zoom in">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button type="button" className="reader-btn" onClick={() => setZoomMode('actual')}>Actual</button>
+          </div>
+
+          <div className="control-group action-group">
+            <button type="button" className="reader-icon-btn" onClick={() => setRotation((current) => normalizeRotation(current + 90))} title="Rotate">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.59-9.21l-5.4 5.4"/></svg>
+            </button>
+            <button type="button" className="reader-btn primary" onClick={handleExportTextContext}>
+              Export Context
+            </button>
+          </div>
         </div>
       </header>
 
       <section className="reader-layout">
-        <aside className="reader-sidebar">
-          <div className="reader-side-toggle-row">
-            <button
-              type="button"
-              className="reader-chip-btn"
-              onClick={() => setShowThumbs((current) => !current)}
-            >
-              {showThumbs ? 'Hide Thumbs' : 'Show Thumbs'}
-            </button>
-            <button
-              type="button"
-              className="reader-chip-btn"
-              onClick={() => setShowOutline((current) => !current)}
-            >
-              {showOutline ? 'Hide Outline' : 'Show Outline'}
-            </button>
-          </div>
-
-          {showThumbs ? (
-            <div className="reader-section">
-              <h2>Thumbnails</h2>
-              <ul className="thumb-list">
-                {Array.from({ length: numPages }, (_, index) => {
-                  const page = index + 1
-                  return (
-                    <li key={`thumb-${page}`}>
-                      <button
-                        type="button"
-                        className="thumb-item"
-                        onClick={() => scrollToPage(page)}
-                        title={`Go to page ${page}`}
-                      >
-                        <canvas
-                          ref={(node) => {
-                            thumbnailCanvasRef.current[page] = node
-                          }}
-                        />
-                        <span>{page}</span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
+        {isSidebarOpen && (
+          <aside className="reader-sidebar">
+            <div className="reader-segmented-control">
+              <button
+                type="button"
+                className={`segmented-tab ${activeTab === 'thumbs' ? 'active' : ''}`}
+                onClick={() => setActiveTab('thumbs')}
+              >
+                Thumbnails
+              </button>
+              <button
+                type="button"
+                className={`segmented-tab ${activeTab === 'outline' ? 'active' : ''}`}
+                onClick={() => setActiveTab('outline')}
+              >
+                Outline
+              </button>
             </div>
-          ) : null}
 
-          {showOutline ? (
-            <div className="reader-section">
-              <h2>Outline</h2>
-              {outlineItems.length > 0 ? (
-                <ul className="outline-list">
-                  {outlineItems.map((item) => (
-                    <li key={item.key}>
-                      <button
-                        type="button"
-                        className="outline-item"
-                        style={{ paddingLeft: `${10 + item.depth * 14}px` }}
-                        onClick={() => {
-                          if (item.url) {
-                            window.open(item.url, '_blank')
-                            return
-                          }
-                          handleNavigateDest(item.dest)
-                        }}
-                      >
-                        {item.title}
-                      </button>
-                    </li>
-                  ))}
+            {activeTab === 'thumbs' ? (
+              <div className="reader-section">
+                <ul className="thumb-list">
+                  {Array.from({ length: numPages }, (_, index) => {
+                    const page = index + 1
+                    return (
+                      <li key={`thumb-${page}`}>
+                        <button
+                          type="button"
+                          className={`thumb-item ${currentPage === page ? 'active' : ''}`}
+                          onClick={() => scrollToPage(page)}
+                          title={`Go to page ${page}`}
+                        >
+                          <canvas
+                            ref={(node) => {
+                              thumbnailCanvasRef.current[page] = node
+                            }}
+                          />
+                          <span>{page}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
-              ) : (
-                <p className="reader-empty-note">No outline in this PDF.</p>
-              )}
-            </div>
-          ) : null}
-        </aside>
+              </div>
+            ) : null}
+
+            {activeTab === 'outline' ? (
+              <div className="reader-section">
+                {outlineItems.length > 0 ? (
+                  <ul className="outline-list">
+                    {outlineItems.map((item) => (
+                      <li key={item.key}>
+                        <button
+                          type="button"
+                          className="outline-item"
+                          style={{ paddingLeft: `${10 + item.depth * 14}px` }}
+                          onClick={() => {
+                            if (item.url) {
+                              window.open(item.url, '_blank')
+                              return
+                            }
+                            handleNavigateDest(item.dest)
+                          }}
+                        >
+                          {item.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="reader-empty-note">No outline in this PDF.</p>
+                )}
+              </div>
+            ) : null}
+          </aside>
+        )}
 
         <div className="reader-main">
           <div className="reader-meta-row">
             <span className="reader-status">
               Page {currentPage} / {numPages}
             </span>
-            <span className="reader-status">
-              Cached text: {Object.keys(textCache).length}/{numPages}
-            </span>
-            <span className="reader-status">{extractStatus}</span>
+            {extractStatus && <span className="reader-status">{extractStatus}</span>}
           </div>
           <section ref={scrollWrapRef} className="reader-canvas-wrap advanced">
             {isLoading ? <p className="reader-message">Loading PDF...</p> : null}
@@ -956,27 +737,24 @@ function ReaderApp({ documentId }: ReaderAppProps) {
                         pageNumber={page}
                         scale={effectiveScale}
                         rotation={rotation}
-                        searchQuery={searchQuery}
                         estimatedHeight={estimatedPageHeight}
                         scrollRoot={scrollWrapRef.current}
-                        onMatchCount={(pageNumber, count) =>
-                          setMatchCountsByPage((current) => ({
-                            ...current,
-                            [pageNumber]: count,
-                          }))
-                        }
-                        onTextCached={(pageNumber, strings) =>
-                          setTextCache((current) => ({
-                            ...current,
-                            [pageNumber]: { strings },
-                          }))
-                        }
-                        onVisibleChange={(pageNumber, isVisible) =>
-                          setVisiblePages((current) => ({
-                            ...current,
-                            [pageNumber]: isVisible,
-                          }))
-                        }
+                        onVisibleChange={(pageNumber, isVisible) => {
+                          const currentVisible = { ...visiblePagesRef.current }
+                          currentVisible[pageNumber] = isVisible
+                          visiblePagesRef.current = currentVisible
+
+                          const visible = Object.entries(currentVisible)
+                            .filter(([, value]) => value)
+                            .map(([page]) => Number(page))
+                            .sort((a, b) => a - b)
+                          
+                          const newCurrentPage = visible.length > 0 ? visible[0] : 1
+                          setCurrentPage((prev) => {
+                            if (prev !== newCurrentPage) return newCurrentPage
+                            return prev
+                          })
+                        }}
                         onNavigateDest={handleNavigateDest}
                       />
                     </div>
