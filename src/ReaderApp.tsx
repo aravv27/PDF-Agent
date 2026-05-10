@@ -7,7 +7,7 @@ import type {
 } from 'pdfjs-dist/types/src/display/api'
 import type { PageViewport } from 'pdfjs-dist/types/src/display/display_utils'
 import workerSrc from 'pdfjs-dist/build/pdf.worker.mjs?url'
-import './style.css'
+import './reader.css'
 
 GlobalWorkerOptions.workerSrc = workerSrc
 

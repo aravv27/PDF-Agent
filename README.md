@@ -1,78 +1,66 @@
 # PDF Agent (Desktop)
 
-A local-first desktop app for managing PDF projects, built with Electron + React + Vite, with SQLite for persistent project storage.
+A local-first desktop app for managing PDF projects and extracting document context, built with Electron, React, Vite, and SQLite.
 
 ## Current Status
 
-This version includes:
+This version is a fully functional PDF management system featuring:
 
-- Desktop app shell (Electron)
-- Project sidebar with:
-  - search
-  - create project (`+`)
-  - rename project (double-click a project name)
-  - collapsible sidebar with floating `P` reopen button
-- Per-project dashboard layout (UI scaffolding)
-- Local SQLite persistence for projects
+- **Multi-Window Architecture**: Spawns independent reader windows for documents.
+- **Project Management**: 
+  - Search, create, and rename projects.
+  - Persistent storage via SQLite.
+  - Collapsible sidebar with quick-access floating button.
+- **Document Management**:
+  - Add PDFs to projects (files are copied to local app data for persistence).
+  - Per-project document lists.
+- **Advanced PDF Reader**:
+  - **Rendering**: Canvas-based rendering with lazy loading (Intersection Observer) and HiDPI support.
+  - **Interaction**: Full text selection layer and annotation/link support.
+  - **Navigation**: Sidebar with generated thumbnails and interactive document outline.
+  - **Search**: Real-time text search with hit highlighting and prev/next navigation.
+  - **View Controls**: Zoom (Actual, Fit Width, Fit Page, Custom) and 90° rotation.
+  - **Context Extraction**: "Export Context" feature to dump page text and coordinate data to a JSON file for downstream AI workflows.
 
 ## Tech Stack
 
-- Electron
-- React
-- Vite
-- TypeScript
-- SQLite (`node:sqlite` via Electron main process)
+- **Framework**: React 19 (TypeScript)
+- **Runtime**: Electron 42
+- **Build Tool**: Vite 8
+- **Database**: SQLite (`node:sqlite` via Electron main process)
+- **PDF Engine**: PDF.js (`pdfjs-dist`)
+- **Styling**: Vanilla CSS with modern aesthetics (gradients, glassmorphism, responsive dashboard).
 
 ## Getting Started
 
-## Prerequisites
+### Prerequisites
 
 - Node.js `22+`
 - npm `10+`
 
-## Install
+### Install
 
 ```bash
 npm install
 ```
 
-## Run (Desktop Dev)
+### Run (Desktop Dev)
 
 ```bash
 npm run desktop:dev
 ```
 
-This runs:
-
-- Vite dev server
-- Electron window connected to Vite
-
-## Build
-
-```bash
-npm run build
-```
-
-## NPM Scripts
-
-- `npm run dev` - Vite only
-- `npm run electron:dev` - Electron (expects Vite on `5173`)
-- `npm run desktop:dev` - Vite + Electron together
-- `npm run build` - TypeScript check + Vite build
-- `npm run preview` - Preview web build
-- `npm run desktop:build` - Alias for `npm run build`
+This runs the Vite dev server and the Electron main process concurrently.
 
 ## Project Data (SQLite)
 
-Projects are stored in the Electron user data directory as:
+Data is stored in the Electron user data directory:
+- Database: `pdf-agent.sqlite`
+- Files: `projects/<project_id>/documents/`
 
-- `pdf-agent.sqlite`
+On Windows: `C:\Users\<user>\AppData\Roaming\pdf-agent\`
 
-On Windows this is typically:
-
-- `C:\Users\<your-user>\AppData\Roaming\pdf-agent\pdf-agent.sqlite`
-
-## Database Schema (Current)
+### Database Schema
 
 ```sql
 CREATE TABLE projects (
@@ -81,38 +69,35 @@ CREATE TABLE projects (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+CREATE TABLE documents (
+  document_id INTEGER PRIMARY KEY,
+  project_id INTEGER NOT NULL,
+  document_name TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY(project_id) REFERENCES projects(project_id) ON DELETE CASCADE
+);
 ```
-
-## Current Project Actions
-
-- Create: click `Create New Project` `+` button
-- Select: single-click a project in sidebar
-- Rename: double-click project name, then:
-  - `Enter` to save
-  - click outside to save
-  - `Escape` to cancel
-
-## Important Dev Note
-
-`Ctrl + R` reloads only the renderer (React UI).  
-If you changed Electron `main`/`preload` code (IPC/backend), fully stop and restart `npm run desktop:dev`.
 
 ## Folder Structure
 
 ```txt
 electron/
-  main.cjs          # Electron main process + SQLite + IPC
-  preload.cjs       # Secure renderer API bridge
+  main.cjs          # Main process: Window management, SQLite, IPC handlers
+  preload.cjs       # Secure bridge for desktop API (projects, documents, fs)
 src/
-  App.tsx           # Sidebar + dashboard UI and interactions
-  main.tsx          # React entry
-  style.css         # App styling/layout
-  desktop.d.ts      # Renderer typings for window.desktop API
+  main.tsx          # React entry with hash-based routing (#reader/<id>)
+  App.tsx           # Project dashboard and sidebar UI
+  ReaderApp.tsx     # Feature-rich PDF viewer component
+  style.css         # Unified design system and layout
+  desktop.d.ts      # TypeScript definitions for the window.desktop API
 ```
 
-## Roadmap (Next)
+## Roadmap
 
-- Documents table and document attachments per project
-- Popup panels for Description / Custom Instructions / Notes / Memory / Files
-- PDF viewer integration (PDF.js)
-- Notes, summaries, and AI workflows
+- [ ] Agent integration (AI workflows using exported context)
+- [ ] Memory panel implementation
+- [ ] Custom instructions and project-specific notes
+- [ ] Drag-and-drop document upload

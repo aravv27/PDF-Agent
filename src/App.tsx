@@ -304,25 +304,34 @@ function App() {
             <section className="dashboard-grid">
               <div className="left-column">
                 <article className="panel details-panel">
-                  <button type="button" className="ghost-chip">
+                  <button type="button" className="ghost-chip chip-description">
+                    <svg className="chip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h12M4 18h8"/></svg>
                     Description
                   </button>
-                  <button type="button" className="ghost-chip">
+                  <button type="button" className="ghost-chip chip-instructions">
+                    <svg className="chip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
                     Custom Instructions
                   </button>
-                  <button type="button" className="ghost-chip">
+                  <button type="button" className="ghost-chip chip-notes">
+                    <svg className="chip-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                     Misc Notes
                   </button>
                 </article>
 
                 <article className="panel agents-panel">
-                  <h2>Agents</h2>
+                  <h2>
+                    <svg className="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
+                    Agents
+                  </h2>
                 </article>
               </div>
 
               <article className="panel documents-panel">
                 <div className="documents-panel-head">
-                  <h2>The list of documents</h2>
+                  <h2>
+                    <svg className="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                    The list of documents
+                  </h2>
                 </div>
                 {documentError ? <p className="project-error">{documentError}</p> : null}
                 {documents.length > 0 ? (
@@ -334,6 +343,7 @@ function App() {
                           className="document-item"
                           onClick={() => void handleOpenDocument(document.documentId)}
                         >
+                          <svg className="doc-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M13 2v7h7"/></svg>
                           {document.documentName}
                         </button>
                       </li>
@@ -346,10 +356,16 @@ function App() {
 
               <div className="right-column">
                 <article className="panel memory-panel">
-                  <h2>Memory</h2>
+                  <h2>
+                    <svg className="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    Memory
+                  </h2>
                 </article>
                 <article className="panel files-panel">
-                  <h2>Other Files</h2>
+                  <h2>
+                    <svg className="panel-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    Other Files
+                  </h2>
                 </article>
               </div>
             </section>
